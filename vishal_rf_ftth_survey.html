@@ -1,0 +1,2296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TelePlan Studio - RF & OFC Feasibility Portal</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            telecom: {
+              navy: '#0b1120',
+              panel: '#111b2e',
+              border: '#1f2e4d',
+              accent: '#06b6d4',
+              fiber: '#ec4899',
+              rf: '#10b981',
+              warning: '#f59e0b',
+              danger: '#ef4444'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Chart.js for Profile and Elevation simulation -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0b1120; }
+    ::-webkit-scrollbar-thumb { background: #1f2e4d; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #06b6d4; }
+    
+    .leaflet-popup-content-wrapper {
+      background: #111b2e;
+      color: #f1f5f9;
+      border: 1px solid #1f2e4d;
+      border-radius: 0.5rem;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7);
+    }
+    .leaflet-popup-tip { background: #111b2e; }
+    .pulse-ring {
+      animation: pulsate 2s infinite ease-out;
+    }
+    @keyframes pulsate {
+      0% { transform: scale(0.9); opacity: 0.9; }
+      50% { transform: scale(1.35); opacity: 0.2; }
+      100% { transform: scale(0.9); opacity: 0.9; }
+    }
+  </style>
+</head>
+<body class="bg-telecom-navy text-slate-100 flex flex-col h-screen overflow-hidden font-sans">
+
+  <!-- Top Navigation Bar -->
+  <header class="h-14 border-b border-telecom-border bg-telecom-panel/95 backdrop-blur px-4 flex items-center justify-between shrink-0 z-30">
+    <div class="flex items-center gap-3">
+      <!-- Toggle Sidebar Button for Maximum Map Space -->
+      <button id="btn-toggle-sidebar" title="Toggle Sidebar (Expand Map)" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-telecom-border transition">
+        <i data-lucide="panel-left-close" id="sidebar-toggle-icon" class="w-4 h-4"></i>
+      </button>
+
+      <div class="h-9 w-9 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+        <i data-lucide="radio" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-base tracking-wide flex items-center gap-2">
+          <span>TelePlan Studio</span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">RF & OFC CAD</span>
+        </h1>
+        <p class="text-[10px] text-slate-400 hidden sm:block">Enterprise GIS Network Survey & Feasibility Engine</p>
+      </div>
+    </div>
+
+    <!-- Active Tool Banner -->
+    <div id="active-tool-indicator" class="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-800 text-xs text-cyan-300">
+      <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+      <span id="active-tool-text">Mode: Select / Inspect</span>
+    </div>
+
+    <!-- Quick Actions & Stats toggle -->
+    <div class="flex items-center gap-2">
+      <!-- Maximize Map / Focus Mode Button -->
+      <button id="btn-toggle-focus" title="Maximize Map View" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-cyan-900/40 border border-telecom-border text-xs text-cyan-400 font-medium transition">
+        <i data-lucide="maximize-2" id="focus-icon" class="w-4 h-4"></i>
+        <span class="hidden md:inline" id="focus-label">Focus Map</span>
+      </button>
+
+      <!-- Admin Status / Auth Toggle -->
+      <button id="btn-admin-auth" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition bg-slate-800/80 border-slate-700 text-slate-300 hover:text-white">
+        <i data-lucide="lock" id="auth-status-icon" class="w-4 h-4 text-amber-400"></i>
+        <span id="auth-status-label">Viewer Mode</span>
+      </button>
+
+      <button id="btn-sync-gps" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30 text-xs font-medium transition">
+        <i data-lucide="crosshair" class="w-4 h-4"></i>
+        <span class="hidden sm:inline">Geo-Tag to DB</span>
+      </button>
+
+      <button id="btn-toggle-dashboard" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 text-white hover:bg-cyan-500 text-xs font-medium transition shadow-lg shadow-cyan-900/30">
+        <i data-lucide="database" class="w-4 h-4"></i>
+        <span>DB & Survey</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Work Area -->
+  <div class="flex flex-1 overflow-hidden relative">
+    
+    <!-- Left Asset Toolbox (Desktop & Tablet) -->
+    <aside id="main-sidebar" class="w-72 bg-telecom-panel border-r border-telecom-border flex flex-col shrink-0 z-20 overflow-y-auto transition-all duration-300">
+      
+      <!-- Role Status Bar -->
+      <div id="admin-badge-strip" class="px-4 py-2 bg-slate-900/90 border-b border-telecom-border flex items-center justify-between text-xs">
+        <div class="flex items-center gap-1.5">
+          <span id="role-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+          <span id="role-text" class="text-slate-400 text-[11px]">Role: Field Surveyor (Read/Tag)</span>
+        </div>
+        <button id="quick-login-toggle" class="text-[10px] text-cyan-400 hover:underline">Log in Admin</button>
+      </div>
+
+      <!-- Toolbox Tabs -->
+      <div class="p-3 border-b border-telecom-border">
+        <div class="grid grid-cols-2 p-1 bg-telecom-navy rounded-lg gap-1 text-xs">
+          <button id="tab-rf-btn" class="py-1.5 rounded-md font-medium text-cyan-400 bg-telecom-panel shadow">RF Wireless</button>
+          <button id="tab-ofc-btn" class="py-1.5 rounded-md font-medium text-slate-400 hover:text-slate-200">OFC FTTH</button>
+        </div>
+      </div>
+
+      <!-- RF Tool Panel -->
+      <div id="rf-tools" class="p-4 space-y-4">
+        <div>
+          <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">Wireless Nodes</span>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="tool-btn flex flex-col items-center justify-center p-3 rounded-lg border border-telecom-border bg-slate-900/50 hover:border-cyan-500 hover:bg-cyan-500/10 transition group text-center" data-tool="add-ap">
+              <i data-lucide="tower-control" class="w-5 h-5 text-emerald-400 mb-1 group-hover:scale-110 transition"></i>
+              <span class="text-xs font-semibold">Base AP Tower</span>
+              <span class="text-[10px] text-slate-400">Admin Only</span>
+            </button>
+
+            <button class="tool-btn flex flex-col items-center justify-center p-3 rounded-lg border border-telecom-border bg-slate-900/50 hover:border-amber-500 hover:bg-amber-500/10 transition group text-center" data-tool="add-cpe">
+              <i data-lucide="satellite-dish" class="w-5 h-5 text-amber-400 mb-1 group-hover:scale-110 transition"></i>
+              <span class="text-xs font-semibold">Survey CPE</span>
+              <span class="text-[10px] text-slate-400">Temp / Feasibility</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- RF Parameters Defaults -->
+        <div class="p-3 rounded-lg border border-telecom-border bg-slate-900/40 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-cyan-300">AP Radio Preset</span>
+            <i data-lucide="sliders" class="w-3.5 h-3.5 text-slate-400"></i>
+          </div>
+
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">Frequency Band</label>
+            <select id="rf-freq-select" class="w-full text-xs bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200 focus:outline-none focus:border-cyan-500">
+              <option value="5.8">5.8 GHz (Backhaul / PTMP)</option>
+              <option value="2.4">2.4 GHz (Long Range / High Noise)</option>
+              <option value="60">60 GHz (V-Band mmWave gigabit)</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">AP Tower Ht (m)</label>
+              <input type="number" id="rf-ap-height" value="30" min="5" max="100" class="w-full text-xs bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">AP TX Pwr (dBm)</label>
+              <input type="number" id="rf-ap-tx" value="27" min="10" max="36" class="w-full text-xs bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">AP Gain (dBi)</label>
+              <input type="number" id="rf-ap-gain" value="19" min="5" max="34" class="w-full text-xs bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">CPE Gain (dBi)</label>
+              <input type="number" id="rf-cpe-gain" value="16" min="8" max="30" class="w-full text-xs bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+            </div>
+          </div>
+        </div>
+
+        <!-- Fresnel Simulation Controls -->
+        <div class="p-3 rounded-lg border border-telecom-border bg-slate-900/40 space-y-2">
+          <span class="text-xs font-semibold text-slate-300 block">Fresnel Clear Zone Spec</span>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-400">Obstacle Clearance Req:</span>
+            <span class="font-mono text-cyan-400 font-bold">60% F1</span>
+          </div>
+          <p class="text-[10px] text-slate-400 leading-relaxed">
+            Standard: First Fresnel zone must maintain minimum 60% clearance without foliage or building encroachment.
+          </p>
+        </div>
+      </div>
+
+      <!-- OFC Tool Panel -->
+      <div id="ofc-tools" class="p-4 space-y-4 hidden">
+        <div>
+          <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">FTTH Permanent Infrastructure</span>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="tool-btn flex flex-col items-center justify-center p-2.5 rounded-lg border border-telecom-border bg-slate-900/50 hover:border-pink-500 hover:bg-pink-500/10 transition group text-center" data-tool="add-noc">
+              <i data-lucide="server" class="w-5 h-5 text-indigo-400 mb-1"></i>
+              <span class="text-xs font-semibold">Central NOC</span>
+              <span class="text-[10px] text-slate-400">Core Network</span>
+            </button>
+
+            <button class="tool-btn flex flex-col items-center justify-center p-2.5 rounded-lg border border-telecom-border bg-slate-900/50 hover:border-pink-500 hover:bg-pink-500/10 transition group text-center" data-tool="add-olt">
+              <i data-lucide="cpu" class="w-5 h-5 text-cyan-400 mb-1"></i>
+              <span class="text-xs font-semibold">OLT Headend</span>
+              <span class="text-[10px] text-slate-400">GPON / EPON</span>
+            </button>
+
+            <button class="tool-btn flex flex-col items-center justify-center p-2.5 rounded-lg border border-telecom-border bg-slate-900/50 hover:border-pink-500 hover:bg-pink-500/10 transition group text-center" data-tool="add-fat">
+              <i data-lucide="box" class="w-5 h-5 text-pink-400 mb-1"></i>
+              <span class="text-xs font-semibold">FAT Box</span>
+              <span class="text-[10px] text-slate-400">8/16 Drop Box</span>
+            </button>
+
+            <button class="tool-btn flex flex-col items-center justify-center p-2.5 rounded-lg border border-telecom-border bg-slate-900/50 hover:border-pink-500 hover:bg-pink-500/10 transition group text-center" data-tool="add-joint">
+              <i data-lucide="git-merge" class="w-5 h-5 text-amber-400 mb-1"></i>
+              <span class="text-xs font-semibold">Road Joint</span>
+              <span class="text-[10px] text-slate-400">Dome / Chamber</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Cable Route Tool with 2F & 6F Core Selection -->
+        <div class="p-3 rounded-lg border border-pink-900/40 bg-pink-950/20 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-pink-300">Fiber Route Tool</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-pink-900/60 text-pink-300">Click Map to Draw</span>
+          </div>
+          <button id="btn-draw-cable" class="w-full py-2 px-3 rounded-lg bg-pink-600 hover:bg-pink-500 text-white font-medium text-xs flex items-center justify-center gap-2 transition">
+            <i data-lucide="activity" class="w-4 h-4"></i>
+            <span id="cable-btn-label">Draw Optical Cable</span>
+          </button>
+          
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Fiber Core Count</label>
+              <select id="cable-cores" class="w-full text-xs bg-telecom-navy border border-telecom-border rounded p-1 text-slate-200">
+                <option value="2">2 Core (Drop Cable)</option>
+                <option value="6">6 Core (Sub-Feeder)</option>
+                <option value="12">12 Core (Feeder)</option>
+                <option value="24" selected>24 Core (Distribution)</option>
+                <option value="48">48 Core (Trunk)</option>
+                <option value="96">96 Core (Armored Backbone)</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Wavelength</label>
+              <select id="cable-wavelength" class="w-full text-xs bg-telecom-navy border border-telecom-border rounded p-1 text-slate-200">
+                <option value="1310">1310 nm (0.35 dB/km)</option>
+                <option value="1490" selected>1490 nm (0.25 dB/km)</option>
+                <option value="1550">1550 nm (0.22 dB/km)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Color Coding Spec Banner -->
+          <div class="pt-1.5">
+            <span class="text-[10px] font-semibold text-slate-300 block mb-1">TIA-598-A Color Code Reference</span>
+            <div id="quick-color-swatches" class="flex items-center gap-1 overflow-x-auto pb-1">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Splitter Loss Calculator Quick Ref -->
+        <div class="p-3 rounded-lg border border-telecom-border bg-slate-900/40 space-y-2">
+          <span class="text-xs font-semibold text-slate-300">Splitter Budget Loss Ref</span>
+          <div class="grid grid-cols-2 gap-1.5 text-[11px] font-mono">
+            <div class="flex justify-between bg-telecom-navy p-1 rounded border border-telecom-border/50">
+              <span class="text-slate-400">1:2 Splitter:</span>
+              <span class="text-pink-400">~3.8 dB</span>
+            </div>
+            <div class="flex justify-between bg-telecom-navy p-1 rounded border border-telecom-border/50">
+              <span class="text-slate-400">1:4 PLC:</span>
+              <span class="text-pink-400">~7.2 dB</span>
+            </div>
+            <div class="flex justify-between bg-telecom-navy p-1 rounded border border-telecom-border/50">
+              <span class="text-slate-400">1:8 PLC:</span>
+              <span class="text-pink-400">~10.5 dB</span>
+            </div>
+            <div class="flex justify-between bg-telecom-navy p-1 rounded border border-telecom-border/50">
+              <span class="text-slate-400">1:16 PLC:</span>
+              <span class="text-pink-400">~13.8 dB</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Reset / Clear -->
+      <div class="mt-auto p-4 border-t border-telecom-border flex gap-2">
+        <button id="btn-load-sample" class="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded border border-telecom-border transition">
+          Load Demo Plan
+        </button>
+        <button id="btn-clear-all" class="py-1.5 px-3 bg-red-950/40 text-red-400 hover:bg-red-900/40 text-xs rounded border border-red-800/40 transition">
+          Clear DB
+        </button>
+      </div>
+    </aside>
+
+    <!-- Map Canvas Container (Can expand to 100% width/height) -->
+    <div class="flex-1 relative h-full flex flex-col min-w-0">
+      <div id="map" class="w-full flex-1 z-10 bg-slate-950"></div>
+
+      <!-- Map Floating Overlay Controls -->
+      <div class="absolute top-4 left-4 z-20 flex flex-col gap-2">
+        <!-- Layer Switcher Pill -->
+        <div class="bg-telecom-panel/90 backdrop-blur border border-telecom-border rounded-xl p-1 shadow-2xl flex items-center gap-1">
+          <button class="layer-btn px-2.5 py-1 text-xs rounded-lg font-medium text-white bg-cyan-600" data-layer="satellite">Satellite</button>
+          <button class="layer-btn px-2.5 py-1 text-xs rounded-lg font-medium text-slate-400 hover:text-slate-200" data-layer="terrain">Terrain Contours</button>
+          <button class="layer-btn px-2.5 py-1 text-xs rounded-lg font-medium text-slate-400 hover:text-slate-200" data-layer="streets">Streets</button>
+          <button class="layer-btn px-2.5 py-1 text-xs rounded-lg font-medium text-slate-400 hover:text-slate-200" data-layer="dark">Dark CAD</button>
+        </div>
+
+        <!-- Quick Map Size Toggle Pill -->
+        <button id="btn-quick-collapse-bottom" class="self-start px-2.5 py-1 rounded-lg bg-telecom-panel/90 border border-telecom-border text-[11px] text-slate-300 hover:text-cyan-400 backdrop-blur shadow flex items-center gap-1.5">
+          <i data-lucide="chevrons-down" id="drawer-arrow-icon" class="w-3.5 h-3.5"></i>
+          <span id="quick-drawer-label">Hide Link Analytics (Enlarge Map)</span>
+        </button>
+      </div>
+
+      <!-- Live GPS Accuracy readout -->
+      <div id="gps-status-badge" class="hidden absolute top-4 right-4 z-20 bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs px-3 py-1.5 rounded-lg backdrop-blur flex items-center gap-2 shadow-lg">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+        <span id="gps-status-text">GPS: Active</span>
+      </div>
+
+      <!-- Bottom Feasibility Bar / Fresnel Profiler (Collapsible to zero height) -->
+      <div id="feasibility-drawer" class="z-20 bg-telecom-panel/95 backdrop-blur border-t border-telecom-border transition-all duration-300 flex flex-col shrink-0">
+        <!-- Drawer Header -->
+        <div class="px-4 py-2 border-b border-telecom-border flex items-center justify-between cursor-pointer" id="drawer-toggle">
+          <div class="flex items-center gap-2">
+            <span id="feasibility-pill" class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+              No Active Link
+            </span>
+            <span class="text-xs font-semibold text-slate-200" id="drawer-title">Select or place a CPE to compute RF Fresnel & OFC Feasibility</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <span id="link-distance-quick" class="text-xs font-mono text-cyan-400 hidden">Dist: 1.42 km</span>
+            <button id="btn-drawer-collapse" class="p-1 hover:bg-slate-800 rounded text-slate-400">
+              <i id="drawer-chevron" data-lucide="chevron-down" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Drawer Content Body -->
+        <div id="drawer-body" class="p-4 grid grid-cols-1 lg:grid-cols-12 gap-4 max-h-[340px] overflow-y-auto">
+          
+          <!-- Column 1: RF Link Feasibility Specs -->
+          <div class="lg:col-span-4 bg-telecom-navy/80 rounded-xl p-3 border border-telecom-border space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-cyan-300 uppercase tracking-wide">RF Link Budget & LoS</span>
+              <span id="rf-verdict-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400">Awaiting Target</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div class="bg-slate-900/60 p-2 rounded border border-telecom-border/40">
+                <span class="text-[10px] text-slate-400 block">Radial Distance</span>
+                <span id="calc-distance" class="text-sm font-mono font-bold text-slate-200">-- km</span>
+              </div>
+              <div class="bg-slate-900/60 p-2 rounded border border-telecom-border/40">
+                <span class="text-[10px] text-slate-400 block">Fresnel Radius (F1 Max)</span>
+                <span id="calc-fresnel-rad" class="text-sm font-mono font-bold text-cyan-400">-- m</span>
+              </div>
+              <div class="bg-slate-900/60 p-2 rounded border border-telecom-border/40">
+                <span class="text-[10px] text-slate-400 block">FSPL (Path Loss)</span>
+                <span id="calc-fspl" class="text-sm font-mono font-bold text-slate-200">-- dB</span>
+              </div>
+              <div class="bg-slate-900/60 p-2 rounded border border-telecom-border/40">
+                <span class="text-[10px] text-slate-400 block">Expected RX RSSI</span>
+                <span id="calc-rssi" class="text-sm font-mono font-bold text-emerald-400">-- dBm</span>
+              </div>
+            </div>
+
+            <!-- Pole Height Slider Simulator -->
+            <div class="pt-1">
+              <div class="flex justify-between text-[11px] mb-1">
+                <span class="text-slate-400">CPE Pole / Mast Height:</span>
+                <span id="pole-height-val" class="text-cyan-400 font-mono font-bold">12 m</span>
+              </div>
+              <input type="range" id="pole-height-slider" min="3" max="45" value="12" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400">
+              <div class="flex justify-between text-[9px] text-slate-400">
+                <span>3m (Rooftop)</span>
+                <span>15m (Short Pole)</span>
+                <span>30m (Tower)</span>
+                <span>45m</span>
+              </div>
+            </div>
+
+            <div class="text-[11px] text-slate-400 bg-slate-950/40 p-2 rounded border border-telecom-border/30" id="rf-recommendation">
+              Connect a CPE to evaluate obstruction clearance and optimal antenna orientation.
+            </div>
+          </div>
+
+          <!-- Column 2: Interactive Fresnel Zone 2D Obstacle Profile -->
+          <div class="lg:col-span-5 bg-telecom-navy/80 rounded-xl p-3 border border-telecom-border flex flex-col">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <i data-lucide="mountain-snow" class="w-4 h-4 text-cyan-400"></i>
+                <span class="text-xs font-bold text-slate-200">Line-of-Sight & 1st Fresnel Clearance Profile</span>
+              </div>
+              <span class="text-[10px] text-slate-400 font-mono">Center: F1 Max Zone</span>
+            </div>
+            <div class="flex-1 min-h-[160px] relative">
+              <canvas id="fresnel-chart" class="w-full h-full"></canvas>
+            </div>
+          </div>
+
+          <!-- Column 3: OFC Feasibility to Nearest FAT/OLT -->
+          <div class="lg:col-span-3 bg-telecom-navy/80 rounded-xl p-3 border border-telecom-border space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-pink-400 uppercase tracking-wide">OFC Drop Feasibility</span>
+              <span id="ofc-verdict-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400">Checking...</span>
+            </div>
+
+            <div class="space-y-2 text-xs">
+              <div class="flex justify-between p-1.5 rounded bg-slate-900/50">
+                <span class="text-slate-400">Nearest FAT Box:</span>
+                <span id="ofc-nearest-fat" class="font-mono text-slate-200">--</span>
+              </div>
+              <div class="flex justify-between p-1.5 rounded bg-slate-900/50">
+                <span class="text-slate-400">Street Cable Distance:</span>
+                <span id="ofc-cable-dist" class="font-mono text-cyan-400 font-semibold">-- m</span>
+              </div>
+              <div class="flex justify-between p-1.5 rounded bg-slate-900/50">
+                <span class="text-slate-400">FAT Splitter Loss:</span>
+                <span id="ofc-splitter-loss" class="font-mono text-pink-400 font-semibold">-- dB</span>
+              </div>
+              <div class="flex justify-between p-1.5 rounded bg-slate-900/50">
+                <span class="text-slate-400">Est. Optical RX Power:</span>
+                <span id="ofc-rx-power" class="font-mono text-emerald-400 font-bold">-- dBm</span>
+              </div>
+            </div>
+
+            <div class="p-2 rounded bg-pink-950/20 border border-pink-900/30 text-[10px] text-pink-200 leading-normal" id="ofc-advice">
+              Standard FTTH drop target is &lt; 250m from nearest FAT to guarantee optical power &gt;= -24 dBm.
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Slide-over Dashboard / Survey Log & Database Sync -->
+    <div id="survey-dashboard" class="fixed inset-y-14 right-0 w-full sm:w-96 bg-telecom-panel border-l border-telecom-border z-40 transform translate-x-full transition-transform duration-300 flex flex-col shadow-2xl">
+      <div class="p-4 border-b border-telecom-border flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="database" class="w-5 h-5 text-cyan-400"></i>
+          <div>
+            <h2 class="font-bold text-sm">Permanent Database & GIS</h2>
+            <p class="text-[10px] text-emerald-400">Auto-saved to Persistent DB</p>
+          </div>
+        </div>
+        <button id="btn-close-dashboard" class="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Dashboard Stats Rollup -->
+      <div class="p-4 overflow-y-auto space-y-4 flex-1">
+        <div class="grid grid-cols-2 gap-2 text-center">
+          <div class="bg-telecom-navy p-3 rounded-xl border border-telecom-border">
+            <span class="text-[10px] text-slate-400 uppercase font-semibold">Total Fiber Route</span>
+            <div id="stat-fiber-km" class="text-xl font-bold font-mono text-pink-400 mt-0.5">0.00 km</div>
+          </div>
+          <div class="bg-telecom-navy p-3 rounded-xl border border-telecom-border">
+            <span class="text-[10px] text-slate-400 uppercase font-semibold">Active AP Towers</span>
+            <div id="stat-ap-count" class="text-xl font-bold font-mono text-emerald-400 mt-0.5">0</div>
+          </div>
+          <div class="bg-telecom-navy p-3 rounded-xl border border-telecom-border">
+            <span class="text-[10px] text-slate-400 uppercase font-semibold">OLT / FAT Boxes</span>
+            <div id="stat-ofc-nodes" class="text-xl font-bold font-mono text-cyan-400 mt-0.5">0 / 0</div>
+          </div>
+          <div class="bg-telecom-navy p-3 rounded-xl border border-telecom-border">
+            <span class="text-[10px] text-slate-400 uppercase font-semibold">Surveyed Records</span>
+            <div id="stat-cpe-count" class="text-xl font-bold font-mono text-amber-400 mt-0.5">0</div>
+          </div>
+        </div>
+
+        <!-- Field Survey Direct Geo-tag to DB Form -->
+        <div class="p-3.5 bg-telecom-navy rounded-xl border border-telecom-border space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+              <i data-lucide="map-pin" class="w-4 h-4 text-emerald-400"></i>
+              Mobile Geo-Tagging Direct to DB
+            </span>
+            <span class="text-[10px] text-emerald-400 font-mono px-1.5 py-0.5 bg-emerald-950/80 rounded border border-emerald-800">Direct Sync</span>
+          </div>
+
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">Tag / Customer / Landmark Name</label>
+            <input type="text" id="survey-cust-name" placeholder="e.g. Apex Tower B / Field Survey Point" class="w-full text-xs bg-slate-900 border border-telecom-border rounded p-1.5 text-slate-200">
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Asset Category</label>
+              <select id="survey-asset-type" class="w-full text-xs bg-slate-900 border border-telecom-border rounded p-1.5 text-slate-200">
+                <option value="cpe" selected>Customer CPE</option>
+                <option value="fat">New FAT Location</option>
+                <option value="pole">Street Joint / Pole</option>
+                <option value="ap">Proposed AP Tower</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Surveyor Name</label>
+              <input type="text" id="survey-surveyor-name" value="Field Tech #1" class="w-full text-xs bg-slate-900 border border-telecom-border rounded p-1.5 text-slate-200">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Structure Height (m)</label>
+              <input type="number" id="survey-bldg-height" value="15" class="w-full text-xs bg-slate-900 border border-telecom-border rounded p-1.5 text-slate-200">
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Req. Bandwidth</label>
+              <select id="survey-req-speed" class="w-full text-xs bg-slate-900 border border-telecom-border rounded p-1.5 text-slate-200">
+                <option value="100 Mbps">100 Mbps (SOHO)</option>
+                <option value="300 Mbps" selected>300 Mbps (Biz)</option>
+                <option value="1 Gbps">1 Gbps (Enterprise)</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">Field Observations</label>
+            <input type="text" id="survey-notes" placeholder="Rooftop clear, line of sight to north-east AP" class="w-full text-xs bg-slate-900 border border-telecom-border rounded p-1.5 text-slate-200">
+          </div>
+
+          <button id="btn-save-survey-log" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition shadow">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            Commit GPS & Geo-Tag to Database
+          </button>
+        </div>
+
+        <!-- Survey History List -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold text-slate-300">Permanent Database Records</span>
+            <span class="text-[10px] text-slate-400" id="db-records-count">0 items</span>
+          </div>
+          <div id="survey-list" class="space-y-2 max-h-52 overflow-y-auto pr-1">
+            <div class="text-center py-6 text-slate-500 text-xs">No records in database.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer Export options -->
+      <div class="p-3 border-t border-telecom-border bg-slate-950 flex gap-2">
+        <button id="btn-export-geojson" class="flex-1 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-telecom-border flex items-center justify-center gap-1">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+          Export GeoJSON
+        </button>
+        <button id="btn-print-report" class="flex-1 py-1.5 text-xs bg-cyan-700 hover:bg-cyan-600 text-white rounded flex items-center justify-center gap-1">
+          <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+          Print Plan
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Dedicated Node Edit / Configuration Modal -->
+  <div id="node-edit-modal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-telecom-panel border border-telecom-border w-full max-w-md rounded-2xl p-6 shadow-2xl relative text-xs">
+      <div class="flex items-center justify-between mb-4 pb-3 border-b border-telecom-border">
+        <div class="flex items-center gap-2.5">
+          <div id="modal-node-icon" class="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
+            <i data-lucide="edit-3" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span id="modal-node-title">Edit Site / Asset</span>
+              <span id="modal-node-type-badge" class="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-800 text-cyan-400 border border-slate-700">FAT</span>
+            </h3>
+            <p class="text-[10px] text-slate-400">Update naming, location coordinates, and hardware parameters</p>
+          </div>
+        </div>
+        <button id="btn-close-edit-modal" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <input type="hidden" id="edit-node-id">
+
+      <div class="space-y-3.5">
+        <div>
+          <label class="text-[11px] font-semibold text-slate-300 block mb-1">Asset Name / Tag</label>
+          <input type="text" id="edit-node-name" class="w-full bg-telecom-navy border border-telecom-border rounded-lg p-2 text-slate-100 focus:outline-none focus:border-cyan-500 text-xs">
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">Latitude</label>
+            <input type="number" step="0.00001" id="edit-node-lat" class="w-full bg-telecom-navy border border-telecom-border rounded-lg p-2 text-slate-300 text-xs">
+          </div>
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">Longitude</label>
+            <input type="number" step="0.00001" id="edit-node-lng" class="w-full bg-telecom-navy border border-telecom-border rounded-lg p-2 text-slate-300 text-xs">
+          </div>
+        </div>
+
+        <!-- Dynamic Parameter Fields Based on Node Type -->
+        <div id="dynamic-node-fields" class="p-3 rounded-xl bg-slate-900/60 border border-telecom-border space-y-2.5">
+          <!-- Populated dynamically via JS -->
+        </div>
+
+        <div class="pt-2 flex gap-2">
+          <button id="btn-save-node-edit" class="flex-1 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-900/30">
+            <i data-lucide="check" class="w-4 h-4"></i>
+            Save Changes to DB
+          </button>
+          <button id="btn-cancel-node-edit" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition border border-slate-700">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Login Modal -->
+  <div id="admin-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-telecom-panel border border-telecom-border w-full max-w-sm rounded-2xl p-6 shadow-2xl relative">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
+            <i data-lucide="shield-check" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">Telecom Admin Portal</h3>
+            <p class="text-[11px] text-slate-400">Unlock permanent network editing</p>
+          </div>
+        </div>
+        <button id="btn-close-modal" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs text-slate-300 block mb-1">Username</label>
+          <input type="text" id="admin-user-input" value="admin" class="w-full bg-telecom-navy border border-telecom-border rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+        </div>
+        <div>
+          <label class="text-xs text-slate-300 block mb-1">Password</label>
+          <input type="password" id="admin-pass-input" placeholder="telecom2026" class="w-full bg-telecom-navy border border-telecom-border rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+          <span class="text-[10px] text-slate-500 mt-1 block">Default demo password: <span class="font-mono text-cyan-400">telecom2026</span></span>
+        </div>
+
+        <div id="admin-error-msg" class="text-xs text-rose-400 hidden"></div>
+
+        <div class="pt-2 flex gap-2">
+          <button id="btn-submit-login" class="flex-1 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs transition">
+            Log In as Admin
+          </button>
+          <button id="btn-logout" class="hidden flex-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-400 font-medium text-xs transition border border-rose-900/30">
+            Log Out
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal / Notification Toast Container -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 bg-telecom-panel border border-cyan-500/50 text-white px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-3 text-xs">
+    <i data-lucide="check-circle" class="w-4 h-4 text-cyan-400"></i>
+    <span id="toast-message">Action completed successfully</span>
+  </div>
+
+  <!-- APPLICATION JAVASCRIPT LOGIC -->
+  <script>
+    // Standard TIA-598 Optical Fiber Color Codes
+    const TIA598_COLORS = [
+      { num: 1, name: 'Blue', hex: '#2563eb', text: '#ffffff' },
+      { num: 2, name: 'Orange', hex: '#f97316', text: '#ffffff' },
+      { num: 3, name: 'Green', hex: '#16a34a', text: '#ffffff' },
+      { num: 4, name: 'Brown', hex: '#854d0e', text: '#ffffff' },
+      { num: 5, name: 'Slate', hex: '#64748b', text: '#ffffff' },
+      { num: 6, name: 'White', hex: '#f8fafc', text: '#0f172a' },
+      { num: 7, name: 'Red', hex: '#dc2626', text: '#ffffff' },
+      { num: 8, name: 'Black', hex: '#0f172a', text: '#ffffff' },
+      { num: 9, name: 'Yellow', hex: '#eab308', text: '#0f172a' },
+      { num: 10, name: 'Violet', hex: '#9333ea', text: '#ffffff' },
+      { num: 11, name: 'Rose', hex: '#f43f5e', text: '#ffffff' },
+      { num: 12, name: 'Aqua', hex: '#06b6d4', text: '#0f172a' }
+    ];
+
+    // State Store with Database Persistence & Role-Based Access
+    const state = {
+      isAdmin: false,
+      isFocusMode: false,
+      isSidebarOpen: true,
+      isDrawerCollapsed: false,
+      activeTool: null,
+      selectedEntity: null,
+      activeCPE: null,
+      activeAP: null,
+      gpsWatchId: null,
+      gpsMarker: null,
+      isDrawingCable: false,
+      cableDraftPoints: [],
+      cableDraftLine: null,
+      cpePoleHeight: 12,
+      nodes: [],
+      cables: [],
+      surveys: []
+    };
+
+    const DB_STORAGE_KEY = 'teleplan_studio_gis_database_v2';
+    const DB_AUTH_KEY = 'teleplan_studio_auth_state';
+
+    let fresnelChart = null;
+
+    // Map Base Layers Initialization
+    const mapLayers = {
+      satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Esri, Maxar, Earthstar Geographics',
+        maxZoom: 19
+      }),
+      terrain: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        attribution: 'Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap',
+        maxZoom: 17
+      }),
+      streets: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+      }),
+      dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; CartoDB',
+        maxZoom: 19
+      })
+    };
+
+    // Initialize Map
+    const map = L.map('map', {
+      center: [32.0998, 76.2691],
+      zoom: 14,
+      layers: [mapLayers.satellite],
+      zoomControl: false
+    });
+
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // Feature Layers
+    const rfLayerGroup = L.layerGroup().addTo(map);
+    const ofcLayerGroup = L.layerGroup().addTo(map);
+    const linkLayerGroup = L.layerGroup().addTo(map);
+
+    // Persistent Database Sync Functions
+    function saveDatabase() {
+      try {
+        const payload = {
+          nodes: state.nodes.map(n => ({
+            id: n.id,
+            type: n.type,
+            lat: n.lat,
+            lng: n.lng,
+            name: n.name,
+            params: n.params
+          })),
+          cables: state.cables.map(c => ({
+            id: c.id,
+            name: c.name,
+            cores: c.cores,
+            wavelength: c.wavelength,
+            coords: c.coords,
+            lengthKm: c.lengthKm,
+            lossDb: c.lossDb
+          })),
+          surveys: state.surveys
+        };
+        localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(payload));
+      } catch (err) {
+        console.error("Database save error:", err);
+      }
+    }
+
+    function loadDatabase() {
+      try {
+        const saved = localStorage.getItem(DB_STORAGE_KEY);
+        if (!saved) return false;
+        const data = JSON.parse(saved);
+
+        if (data.nodes && Array.isArray(data.nodes)) {
+          data.nodes.forEach(n => {
+            renderNodeFromData(n);
+          });
+        }
+
+        if (data.cables && Array.isArray(data.cables)) {
+          data.cables.forEach(c => {
+            renderCableFromData(c);
+          });
+        }
+
+        if (data.surveys && Array.isArray(data.surveys)) {
+          state.surveys = data.surveys;
+          renderSurveyList();
+        }
+
+        updateAnalytics();
+        return true;
+      } catch (err) {
+        console.error("Database load error:", err);
+        return false;
+      }
+    }
+
+    // Role-Based UI Updates
+    function updateAuthUI() {
+      const authLabel = document.getElementById('auth-status-label');
+      const authIcon = document.getElementById('auth-status-icon');
+      const roleDot = document.getElementById('role-dot');
+      const roleText = document.getElementById('role-text');
+      const quickLogin = document.getElementById('quick-login-toggle');
+      const btnLogout = document.getElementById('btn-logout');
+      const btnSubmit = document.getElementById('btn-submit-login');
+
+      if (state.isAdmin) {
+        authLabel.innerText = 'Admin (Unlocked)';
+        authIcon.setAttribute('data-lucide', 'unlock');
+        authIcon.className = 'w-4 h-4 text-emerald-400';
+        roleDot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+        roleText.innerText = 'Role: Network Administrator (Full CAD Access)';
+        quickLogin.innerText = 'Switch to Viewer';
+        btnLogout.classList.remove('hidden');
+        btnSubmit.classList.add('hidden');
+      } else {
+        authLabel.innerText = 'Viewer Mode';
+        authIcon.setAttribute('data-lucide', 'lock');
+        authIcon.className = 'w-4 h-4 text-amber-400';
+        roleDot.className = 'w-2 h-2 rounded-full bg-amber-400';
+        roleText.innerText = 'Role: Field Surveyor (Sites Locked)';
+        quickLogin.innerText = 'Log in Admin';
+        btnLogout.classList.add('hidden');
+        btnSubmit.classList.remove('hidden');
+      }
+      lucide.createIcons();
+
+      // Update node draggable flags according to admin role
+      state.nodes.forEach(n => {
+        if (n.marker && n.marker.dragging) {
+          if (state.isAdmin || n.type === 'cpe') {
+            n.marker.dragging.enable();
+          } else {
+            n.marker.dragging.disable();
+          }
+        }
+      });
+    }
+
+    // SVG Marker Icons Factory
+    function createCustomIcon(type, label = '') {
+      let bg = '#06b6d4';
+      let iconSvg = '';
+
+      switch(type) {
+        case 'noc':
+          bg = '#6366f1';
+          iconSvg = `<rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="white" stroke-width="2"/><line x1="9" y1="10" x2="15" y2="10" stroke="white" stroke-width="1.5"/><line x1="9" y1="14" x2="15" y2="14" stroke="white" stroke-width="1.5"/>`;
+          break;
+        case 'olt':
+          bg = '#0284c7';
+          iconSvg = `<rect x="4" y="7" width="16" height="10" rx="2" fill="none" stroke="white" stroke-width="2"/><circle cx="8" cy="12" r="1.5" fill="white"/><circle cx="12" cy="12" r="1.5" fill="white"/><circle cx="16" cy="12" r="1.5" fill="white"/>`;
+          break;
+        case 'ap':
+          bg = '#10b981';
+          iconSvg = `<path d="M12 2v20M4.93 4.93a10 10 0 0 1 14.14 0M7.76 7.76a6 6 0 0 1 8.48 0M10.59 10.59a2 2 0 0 1 2.82 0" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/>`;
+          break;
+        case 'cpe':
+          bg = '#f59e0b';
+          iconSvg = `<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" fill="none" stroke="white" stroke-width="2"/><line x1="4" y1="22" x2="4" y2="15" stroke="white" stroke-width="2"/>`;
+          break;
+        case 'fat':
+          bg = '#ec4899';
+          iconSvg = `<rect x="5" y="5" width="14" height="14" rx="3" fill="none" stroke="white" stroke-width="2"/><path d="M9 9h6v6H9z" fill="white"/>`;
+          break;
+        case 'joint':
+          bg = '#eab308';
+          iconSvg = `<circle cx="12" cy="12" r="7" fill="none" stroke="white" stroke-width="2"/><line x1="5" y1="12" x2="19" y2="12" stroke="white" stroke-width="2"/>`;
+          break;
+        case 'pole':
+          bg = '#a855f7';
+          iconSvg = `<line x1="12" y1="2" x2="12" y2="22" stroke="white" stroke-width="2.5"/><line x1="7" y1="6" x2="17" y2="6" stroke="white" stroke-width="2"/><line x1="8" y1="11" x2="16" y2="11" stroke="white" stroke-width="2"/>`;
+          break;
+        default:
+          bg = '#06b6d4';
+          iconSvg = `<circle cx="12" cy="12" r="5" fill="white"/>`;
+      }
+
+      return L.divIcon({
+        className: 'custom-telecom-pin',
+        html: `
+          <div class="relative flex flex-col items-center group cursor-pointer" style="transform: translate(-50%, -50%);">
+            <div class="w-8 h-8 rounded-full shadow-lg flex items-center justify-center border-2 border-white/90" style="background-color: ${bg}; box-shadow: 0 0 14px ${bg}88;">
+              <svg class="w-4 h-4" viewBox="0 0 24 24">${iconSvg}</svg>
+            </div>
+            ${label ? `<span class="mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-950/90 text-white border border-slate-700 whitespace-nowrap shadow">${label}</span>` : ''}
+          </div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+    }
+
+    // Helper: Generate TIA-598 Color Code Swatches Table HTML
+    function generateFiberColorTable(coreCount) {
+      const colors = TIA598_COLORS.slice(0, Math.min(coreCount, 12));
+      let swatchesHtml = colors.map(c => `
+        <div class="flex items-center gap-1.5 bg-slate-900/80 px-1.5 py-1 rounded border border-slate-800">
+          <span class="w-2.5 h-2.5 rounded-full inline-block border border-white/20" style="background-color: ${c.hex}"></span>
+          <span class="text-[10px] font-mono text-slate-300">C${c.num}: ${c.name}</span>
+        </div>
+      `).join('');
+
+      return `
+        <div class="mt-2 pt-2 border-t border-slate-800">
+          <span class="text-[10px] font-bold text-pink-300 uppercase block mb-1">TIA-598-A Color Code (${coreCount}F):</span>
+          <div class="grid grid-cols-2 gap-1">
+            ${swatchesHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    // Toast Alert Helper
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-message').innerText = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3500);
+    }
+
+    // Set Active Tool State
+    function setTool(toolName, label) {
+      // Role Guard: Permanent infrastructure tools require Admin
+      const adminOnlyTools = ['add-ap', 'add-noc', 'add-olt', 'add-fat', 'add-joint', 'draw-cable'];
+      if (!state.isAdmin && adminOnlyTools.includes(toolName)) {
+        showToast("⚠️ Admin login required to add or modify permanent telecom assets.");
+        document.getElementById('admin-modal').classList.remove('hidden');
+        return;
+      }
+
+      state.activeTool = toolName;
+      const indicator = document.getElementById('active-tool-indicator');
+      const text = document.getElementById('active-tool-text');
+      
+      document.querySelectorAll('.tool-btn').forEach(b => {
+        b.classList.remove('ring-2', 'ring-cyan-400');
+        if (b.dataset.tool === toolName) {
+          b.classList.add('ring-2', 'ring-cyan-400');
+        }
+      });
+
+      if (toolName) {
+        indicator.classList.remove('hidden');
+        text.innerText = `Click map: ${label || toolName.toUpperCase()}`;
+        map.getContainer().style.cursor = 'crosshair';
+      } else {
+        indicator.classList.add('hidden');
+        map.getContainer().style.cursor = '';
+      }
+    }
+
+    // Render node onto map
+    function renderNodeFromData(nodeData) {
+      let layerGroup = ofcLayerGroup;
+      if (nodeData.type === 'ap' || nodeData.type === 'cpe') {
+        layerGroup = rfLayerGroup;
+      }
+
+      const marker = L.marker([nodeData.lat, nodeData.lng], {
+        icon: createCustomIcon(nodeData.type, nodeData.name),
+        draggable: state.isAdmin || nodeData.type === 'cpe'
+      }).addTo(layerGroup);
+
+      nodeData.marker = marker;
+      marker.bindPopup(generateNodePopupContent(nodeData));
+
+      marker.on('drag', function(e) {
+        if (!state.isAdmin && nodeData.type !== 'cpe') {
+          showToast("🔒 Permanent nodes are locked in Viewer Mode.");
+          return;
+        }
+        nodeData.lat = e.latlng.lat;
+        nodeData.lng = e.latlng.lng;
+        saveDatabase();
+        if (state.activeCPE && (state.activeCPE.id === nodeData.id || (state.activeAP && state.activeAP.id === nodeData.id))) {
+          evaluateFeasibility();
+        }
+      });
+
+      marker.on('click', function() {
+        if (nodeData.type === 'ap') {
+          state.activeAP = nodeData;
+          showToast(`Selected AP Tower: ${nodeData.name}`);
+          if (state.activeCPE) evaluateFeasibility();
+        } else if (nodeData.type === 'cpe') {
+          state.activeCPE = nodeData;
+          showToast(`Selected Customer CPE: ${nodeData.name}`);
+          evaluateFeasibility();
+        }
+      });
+
+      state.nodes.push(nodeData);
+
+      if (nodeData.type === 'ap' && !state.activeAP) state.activeAP = nodeData;
+      if (nodeData.type === 'cpe' && !state.activeCPE) state.activeCPE = nodeData;
+
+      return nodeData;
+    }
+
+    function addNode(type, latlng, customProps = {}) {
+      const id = 'node_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      let name = '';
+
+      if (type === 'ap') {
+        name = customProps.name || `AP-${state.nodes.filter(n=>n.type==='ap').length + 1} (${document.getElementById('rf-freq-select').value}G)`;
+      } else if (type === 'cpe') {
+        name = customProps.name || `CPE-Survey-${state.nodes.filter(n=>n.type==='cpe').length + 1}`;
+      } else if (type === 'noc') {
+        name = customProps.name || `Central NOC`;
+      } else if (type === 'olt') {
+        name = customProps.name || `OLT-GPON-${state.nodes.filter(n=>n.type==='olt').length + 1}`;
+      } else if (type === 'fat') {
+        name = customProps.name || `FAT-Box-${state.nodes.filter(n=>n.type==='fat').length + 1}`;
+      } else if (type === 'joint') {
+        name = customProps.name || `Joint-Chamber-${state.nodes.filter(n=>n.type==='joint').length + 1}`;
+      } else if (type === 'pole') {
+        name = customProps.name || `Pole-${state.nodes.filter(n=>n.type==='pole').length + 1}`;
+      }
+
+      const nodeData = {
+        id,
+        type,
+        lat: latlng.lat,
+        lng: latlng.lng,
+        name,
+        params: {
+          towerHeight: customProps.towerHeight || (type === 'ap' ? parseFloat(document.getElementById('rf-ap-height').value) : state.cpePoleHeight),
+          freq: customProps.freq || parseFloat(document.getElementById('rf-freq-select').value),
+          txPower: customProps.txPower || parseFloat(document.getElementById('rf-ap-tx').value),
+          apGain: customProps.apGain || parseFloat(document.getElementById('rf-ap-gain').value),
+          cpeGain: customProps.cpeGain || parseFloat(document.getElementById('rf-cpe-gain').value),
+          splitterType: customProps.splitterType || (type === 'fat' ? '1:8' : null)
+        }
+      };
+
+      renderNodeFromData(nodeData);
+      saveDatabase();
+      updateAnalytics();
+
+      if (type === 'cpe') evaluateFeasibility();
+      return nodeData;
+    }
+
+    function generateNodePopupContent(node) {
+      return `
+        <div class="p-2 space-y-2 text-xs max-w-xs">
+          <div class="font-bold text-cyan-400 flex items-center justify-between">
+            <span class="text-sm text-white">${node.name}</span>
+            <span class="text-[9px] uppercase px-1.5 py-0.5 bg-slate-800 text-cyan-300 border border-slate-700 rounded font-mono font-bold">${node.type}</span>
+          </div>
+          
+          <div class="text-[11px] text-slate-300 flex items-center gap-1 font-mono">
+            <span class="text-slate-500">GPS:</span> ${node.lat.toFixed(5)}, ${node.lng.toFixed(5)}
+          </div>
+
+          ${node.type === 'ap' ? `
+            <div class="p-1.5 rounded bg-emerald-950/30 border border-emerald-900/40 text-[11px] text-emerald-300 space-y-0.5">
+              <div>Tower: <span class="font-bold text-white">${node.params.towerHeight}m</span> | Freq: <span class="font-bold text-white">${node.params.freq} GHz</span></div>
+              <div>TX Power: <span class="font-bold text-white">${node.params.txPower} dBm</span> | Gain: <span class="font-bold text-white">${node.params.apGain} dBi</span></div>
+            </div>
+          ` : ''}
+
+          ${node.type === 'fat' ? `
+            <div class="p-1.5 rounded bg-pink-950/30 border border-pink-900/40 text-[11px] text-pink-300 space-y-0.5">
+              <div>Splitter: <span class="font-bold text-white">${node.params.splitterType || '1:8 PLC'}</span></div>
+              <div>Port Capacity: <span class="font-bold text-white">${node.params.portCapacity || '8 Ports'}</span></div>
+            </div>
+          ` : ''}
+
+          ${node.type === 'olt' ? `
+            <div class="p-1.5 rounded bg-cyan-950/30 border border-cyan-900/40 text-[11px] text-cyan-300">
+              <div>SFP Class: <span class="font-bold text-white">${node.params.sfpClass || 'Class C++ (+5dBm)'}</span></div>
+            </div>
+          ` : ''}
+
+          ${node.type === 'joint' ? `
+            <div class="p-1.5 rounded bg-amber-950/30 border border-amber-900/40 text-[11px] text-amber-300">
+              <div>Closure Type: <span class="font-bold text-white">${node.params.jointType || 'Dome Splice Closure'}</span></div>
+            </div>
+          ` : ''}
+
+          ${node.type === 'cpe' ? `
+            <div class="p-1.5 rounded bg-amber-950/30 border border-amber-900/40 text-[11px] text-amber-300">
+              <div>Pole / Mast Height: <span class="font-bold text-white">${node.params.towerHeight || 12}m</span></div>
+            </div>
+          ` : ''}
+
+          <div class="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+            <button onclick="openNodeEditor('${node.id}')" class="px-2.5 py-1 rounded bg-cyan-600/30 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/50 text-[11px] font-medium transition flex items-center gap-1">
+              ✏️ Edit / Rename
+            </button>
+            
+            ${state.isAdmin || node.type === 'cpe' ? `
+              <button onclick="deleteNode('${node.id}')" class="text-rose-400 hover:text-rose-300 text-[11px] hover:underline flex items-center gap-1">
+                🗑️ Delete
+              </button>
+            ` : `<span class="text-[10px] text-slate-500">🔒 Locked</span>`}
+          </div>
+        </div>
+      `;
+    }
+
+    // Interactive Node Editor Modal Logic
+    window.openNodeEditor = function(nodeId) {
+      const node = state.nodes.find(n => n.id === nodeId);
+      if (!node) return;
+
+      if (!state.isAdmin && node.type !== 'cpe') {
+        showToast("⚠️ Admin login required to modify permanent infrastructure sites.");
+        document.getElementById('admin-modal').classList.remove('hidden');
+        return;
+      }
+
+      document.getElementById('edit-node-id').value = node.id;
+      document.getElementById('edit-node-name').value = node.name;
+      document.getElementById('edit-node-lat').value = node.lat;
+      document.getElementById('edit-node-lng').value = node.lng;
+      document.getElementById('modal-node-title').innerText = `Edit ${node.name}`;
+      document.getElementById('modal-node-type-badge').innerText = node.type.toUpperCase();
+
+      const dynamicFields = document.getElementById('dynamic-node-fields');
+      let fieldsHtml = '';
+
+      if (node.type === 'ap') {
+        fieldsHtml = `
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Tower Height (m)</label>
+              <input type="number" id="edit-ap-height" value="${node.params.towerHeight || 30}" class="w-full bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Frequency Band</label>
+              <select id="edit-ap-freq" class="w-full bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+                <option value="5.8" ${node.params.freq == 5.8 ? 'selected' : ''}>5.8 GHz (PTMP)</option>
+                <option value="2.4" ${node.params.freq == 2.4 ? 'selected' : ''}>2.4 GHz</option>
+                <option value="60" ${node.params.freq == 60 ? 'selected' : ''}>60 GHz mmWave</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">TX Power (dBm)</label>
+              <input type="number" id="edit-ap-tx" value="${node.params.txPower || 27}" class="w-full bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">AP Gain (dBi)</label>
+              <input type="number" id="edit-ap-gain" value="${node.params.apGain || 19}" class="w-full bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+            </div>
+          </div>
+        `;
+      } else if (node.type === 'fat') {
+        fieldsHtml = `
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Splitter Ratio</label>
+              <select id="edit-fat-splitter" class="w-full bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+                <option value="1:4" ${node.params.splitterType == '1:4' ? 'selected' : ''}>1:4 (~7.2 dB loss)</option>
+                <option value="1:8" ${(!node.params.splitterType || node.params.splitterType == '1:8') ? 'selected' : ''}>1:8 (~10.5 dB loss)</option>
+                <option value="1:16" ${node.params.splitterType == '1:16' ? 'selected' : ''}>1:16 (~13.8 dB loss)</option>
+                <option value="1:32" ${node.params.splitterType == '1:32' ? 'selected' : ''}>1:32 (~17.0 dB loss)</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Total Port Capacity</label>
+              <select id="edit-fat-capacity" class="w-full bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+                <option value="8 Ports" ${node.params.portCapacity == '8 Ports' ? 'selected' : ''}>8 Ports</option>
+                <option value="16 Ports" ${node.params.portCapacity == '16 Ports' ? 'selected' : ''}>16 Ports</option>
+                <option value="24 Ports" ${node.params.portCapacity == '24 Ports' ? 'selected' : ''}>24 Ports</option>
+              </select>
+            </div>
+          </div>
+        `;
+      } else if (node.type === 'olt') {
+        fieldsHtml = `
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">Optical SFP Module Class</label>
+            <select id="edit-olt-sfp" class="w-full bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+              <option value="Class B+ (+3 dBm)" ${node.params.sfpClass == 'Class B+ (+3 dBm)' ? 'selected' : ''}>Class B+ (+3 dBm)</option>
+              <option value="Class C+ (+5 dBm)" ${(!node.params.sfpClass || node.params.sfpClass == 'Class C+ (+5 dBm)') ? 'selected' : ''}>Class C+ (+5 dBm)</option>
+              <option value="Class C++ (+7 dBm)" ${node.params.sfpClass == 'Class C++ (+7 dBm)' ? 'selected' : ''}>Class C++ (+7 dBm)</option>
+            </select>
+          </div>
+        `;
+      } else if (node.type === 'joint') {
+        fieldsHtml = `
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-1">Joint Closure / Chamber Type</label>
+            <input type="text" id="edit-joint-type" value="${node.params.jointType || 'Dome Splice Closure 48F'}" class="w-full bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+          </div>
+        `;
+      } else if (node.type === 'cpe') {
+        fieldsHtml = `
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">Pole / Mast Height (m)</label>
+              <input type="number" id="edit-cpe-height" value="${node.params.towerHeight || 12}" class="w-full bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-400 block mb-1">CPE Antenna Gain (dBi)</label>
+              <input type="number" id="edit-cpe-gain" value="${node.params.cpeGain || 16}" class="w-full bg-telecom-navy border border-telecom-border rounded p-1.5 text-slate-200">
+            </div>
+          </div>
+        `;
+      } else {
+        fieldsHtml = `<div class="text-slate-400 text-[11px]">No extra hardware attributes for this node type.</div>`;
+      }
+
+      dynamicFields.innerHTML = fieldsHtml;
+      document.getElementById('node-edit-modal').classList.remove('hidden');
+      lucide.createIcons();
+    };
+
+    // Commit Node Edits Handler
+    function saveNodeEdits() {
+      const nodeId = document.getElementById('edit-node-id').value;
+      const node = state.nodes.find(n => n.id === nodeId);
+      if (!node) return;
+
+      const newName = document.getElementById('edit-node-name').value.trim();
+      const newLat = parseFloat(document.getElementById('edit-node-lat').value);
+      const newLng = parseFloat(document.getElementById('edit-node-lng').value);
+
+      if (newName) node.name = newName;
+      if (!isNaN(newLat) && !isNaN(newLng)) {
+        node.lat = newLat;
+        node.lng = newLng;
+      }
+
+      // Update specific parameters
+      if (node.type === 'ap') {
+        node.params.towerHeight = parseFloat(document.getElementById('edit-ap-height').value) || node.params.towerHeight;
+        node.params.freq = parseFloat(document.getElementById('edit-ap-freq').value) || node.params.freq;
+        node.params.txPower = parseFloat(document.getElementById('edit-ap-tx').value) || node.params.txPower;
+        node.params.apGain = parseFloat(document.getElementById('edit-ap-gain').value) || node.params.apGain;
+      } else if (node.type === 'fat') {
+        node.params.splitterType = document.getElementById('edit-fat-splitter').value;
+        node.params.portCapacity = document.getElementById('edit-fat-capacity').value;
+      } else if (node.type === 'olt') {
+        node.params.sfpClass = document.getElementById('edit-olt-sfp').value;
+      } else if (node.type === 'joint') {
+        node.params.jointType = document.getElementById('edit-joint-type').value;
+      } else if (node.type === 'cpe') {
+        const height = parseFloat(document.getElementById('edit-cpe-height').value) || 12;
+        node.params.towerHeight = height;
+        state.cpePoleHeight = height;
+        document.getElementById('pole-height-slider').value = height;
+        document.getElementById('pole-height-val').innerText = `${height} m`;
+      }
+
+      // Refresh Marker Graphic & Popup on Leaflet
+      node.marker.setLatLng([node.lat, node.lng]);
+      node.marker.setIcon(createCustomIcon(node.type, node.name));
+      node.marker.setPopupContent(generateNodePopupContent(node));
+
+      // Persist to Database and recalculate
+      saveDatabase();
+      updateAnalytics();
+      evaluateFeasibility();
+
+      document.getElementById('node-edit-modal').classList.add('hidden');
+      showToast(`Site "${node.name}" updated successfully in DB`);
+    }
+
+    window.deleteNode = function(id) {
+      const idx = state.nodes.findIndex(n => n.id === id);
+      if (idx !== -1) {
+        const node = state.nodes[idx];
+        if (!state.isAdmin && node.type !== 'cpe') {
+          showToast("🔒 Admin access required to delete permanent sites.");
+          return;
+        }
+        map.removeLayer(node.marker);
+        state.nodes.splice(idx, 1);
+        if (state.activeCPE && state.activeCPE.id === id) state.activeCPE = null;
+        if (state.activeAP && state.activeAP.id === id) state.activeAP = null;
+        clearLinkGraphics();
+        saveDatabase();
+        updateAnalytics();
+        showToast("Node removed from database");
+      }
+    };
+
+    // Render Cable on Map
+    function renderCableFromData(cableObj) {
+      // Dynamic color by core count
+      let strokeColor = '#ec4899'; // default 24F pink
+      if (cableObj.cores === 2) strokeColor = '#38bdf8'; // Sky blue for 2F drop
+      else if (cableObj.cores === 6) strokeColor = '#f59e0b'; // Amber for 6F
+      else if (cableObj.cores === 12) strokeColor = '#10b981'; // Green for 12F
+      else if (cableObj.cores >= 48) strokeColor = '#a855f7'; // Purple for 48/96F
+
+      const polyline = L.polyline(cableObj.coords, {
+        color: strokeColor,
+        weight: cableObj.cores === 2 ? 3 : 5,
+        opacity: 0.85,
+        dashArray: cableObj.cores === 2 ? '4, 4' : null
+      }).addTo(ofcLayerGroup);
+
+      cableObj.polyline = polyline;
+
+      polyline.bindPopup(`
+        <div class="p-2 space-y-1.5 text-xs max-w-sm">
+          <div class="font-bold flex items-center justify-between" style="color: ${strokeColor}">
+            <span>${cableObj.name}</span>
+            <span class="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded font-mono">${cableObj.cores}F SM</span>
+          </div>
+          <div>Route Distance: <span class="font-mono text-cyan-400 font-bold">${(cableObj.lengthKm * 1000).toFixed(0)} meters</span></div>
+          <div>Estimated Optical Loss (@${cableObj.wavelength}nm): <span class="font-mono text-pink-400 font-bold">${cableObj.lossDb.toFixed(2)} dB</span></div>
+          ${generateFiberColorTable(cableObj.cores)}
+          <div class="pt-1.5">
+            ${state.isAdmin ? `
+              <button onclick="deleteCable('${cableObj.id}')" class="text-red-400 hover:text-red-300 text-[10px] underline">Delete Cable Route</button>
+            ` : `<span class="text-[10px] text-slate-500">🔒 Cable locked (Admin only)</span>`}
+          </div>
+        </div>
+      `);
+
+      state.cables.push(cableObj);
+      return cableObj;
+    }
+
+    // Fiber Routing Tool
+    function toggleCableDrawing() {
+      if (!state.isAdmin) {
+        showToast("🔒 Admin login required to draw or modify permanent fiber lines.");
+        document.getElementById('admin-modal').classList.remove('hidden');
+        return;
+      }
+
+      state.isDrawingCable = !state.isDrawingCable;
+      const btn = document.getElementById('btn-draw-cable');
+      const label = document.getElementById('cable-btn-label');
+
+      if (state.isDrawingCable) {
+        state.activeTool = 'draw-cable';
+        btn.classList.replace('bg-pink-600', 'bg-amber-600');
+        label.innerText = 'Finish Route (Dbl-Click)';
+        state.cableDraftPoints = [];
+        showToast("Click along roads or poles to draw route. Double click map to finish.");
+        map.getContainer().style.cursor = 'crosshair';
+      } else {
+        finishCableDrawing();
+      }
+    }
+
+    function finishCableDrawing() {
+      state.isDrawingCable = false;
+      const btn = document.getElementById('btn-draw-cable');
+      const label = document.getElementById('cable-btn-label');
+      btn.classList.replace('bg-amber-600', 'bg-pink-600');
+      label.innerText = 'Draw Optical Cable';
+      map.getContainer().style.cursor = '';
+
+      if (state.cableDraftLine) {
+        map.removeLayer(state.cableDraftLine);
+        state.cableDraftLine = null;
+      }
+
+      if (state.cableDraftPoints.length >= 2) {
+        saveDraftCable(state.cableDraftPoints);
+      }
+      state.cableDraftPoints = [];
+    }
+
+    function saveDraftCable(points) {
+      const cores = parseInt(document.getElementById('cable-cores').value);
+      const wavelength = parseInt(document.getElementById('cable-wavelength').value);
+      
+      let totalDistM = 0;
+      for (let i = 0; i < points.length - 1; i++) {
+        totalDistM += L.latLng(points[i]).distanceTo(L.latLng(points[i+1]));
+      }
+      const lengthKm = totalDistM / 1000;
+
+      const attenuationRate = wavelength === 1310 ? 0.35 : (wavelength === 1490 ? 0.25 : 0.22);
+      const lossDb = (lengthKm * attenuationRate) + (Math.floor(lengthKm / 2) * 0.1) + 0.5;
+
+      const cableId = 'cable_' + Date.now();
+      const cableObj = {
+        id: cableId,
+        name: `${cores}F Cable Route (${(lengthKm * 1000).toFixed(0)}m)`,
+        cores,
+        wavelength,
+        coords: points,
+        lengthKm,
+        lossDb
+      };
+
+      renderCableFromData(cableObj);
+      saveDatabase();
+      updateAnalytics();
+      showToast(`OFC Route committed to DB: ${(lengthKm * 1000).toFixed(0)}m (${cores} Core)`);
+    }
+
+    window.deleteCable = function(id) {
+      if (!state.isAdmin) {
+        showToast("🔒 Admin access required to delete cable routes.");
+        return;
+      }
+      const idx = state.cables.findIndex(c => c.id === id);
+      if (idx !== -1) {
+        map.removeLayer(state.cables[idx].polyline);
+        state.cables.splice(idx, 1);
+        saveDatabase();
+        updateAnalytics();
+        showToast("Fiber route removed from database");
+      }
+    };
+
+    // Calculate Fresnel Radius: F1 = 17.32 * sqrt(d / (4 * f))
+    function calculateFresnelRadius(distKm, freqGHz) {
+      if (distKm <= 0 || freqGHz <= 0) return 0;
+      return 17.32 * Math.sqrt(distKm / (4 * freqGHz));
+    }
+
+    // FSPL = 20*log10(d_km) + 20*log10(f_MHz) + 32.44
+    function calculateFSPL(distKm, freqGHz) {
+      const freqMHz = freqGHz * 1000;
+      return 20 * Math.log10(distKm) + 20 * Math.log10(freqMHz) + 32.44;
+    }
+
+    // Evaluate Feasibility
+    function evaluateFeasibility() {
+      if (!state.activeCPE) return;
+
+      if (!state.activeAP) {
+        const apNodes = state.nodes.filter(n => n.type === 'ap');
+        if (apNodes.length === 0) {
+          clearLinkGraphics();
+          updateFeasibilityUIEmpty();
+          return;
+        }
+        const cpeLatLng = L.latLng(state.activeCPE.lat, state.activeCPE.lng);
+        state.activeAP = apNodes.reduce((closest, ap) => {
+          const d = cpeLatLng.distanceTo(L.latLng(ap.lat, ap.lng));
+          return (!closest || d < closest.dist) ? { node: ap, dist: d } : closest;
+        }, null)?.node;
+      }
+
+      const ap = state.activeAP;
+      const cpe = state.activeCPE;
+
+      const apLatLng = L.latLng(ap.lat, ap.lng);
+      const cpeLatLng = L.latLng(cpe.lat, cpe.lng);
+      const distM = apLatLng.distanceTo(cpeLatLng);
+      const distKm = distM / 1000;
+
+      const freq = ap.params.freq || 5.8;
+      const txPower = ap.params.txPower || 27;
+      const apGain = ap.params.apGain || 19;
+      const cpeGain = ap.params.cpeGain || 16;
+      const apHeight = ap.params.towerHeight || 30;
+      const cpeHeight = state.cpePoleHeight;
+
+      const f1Radius = calculateFresnelRadius(distKm, freq);
+      const fspl = calculateFSPL(distKm, freq);
+      const cableLosses = 2.0;
+      const rssi = (txPower + apGain + cpeGain) - fspl - cableLosses;
+
+      const simulatedObstacleHeight = Math.sin(distKm * 2.5) * 8 + 14;
+      const losHeightAtMid = (apHeight + cpeHeight) / 2;
+      const clearance = losHeightAtMid - simulatedObstacleHeight;
+      const clearanceRatio = f1Radius > 0 ? (clearance / f1Radius) : 1;
+
+      let status = 'Feasible';
+      let statusClass = 'text-emerald-400 border-emerald-500/40 bg-emerald-950/40';
+      let verdictBadge = 'EXCELLENT LoS';
+
+      if (distKm > 15.0 || rssi < -78 || clearanceRatio < 0.4) {
+        status = 'Non-Feasible';
+        statusClass = 'text-rose-400 border-rose-500/40 bg-rose-950/40';
+        verdictBadge = 'OBSTRUCTED / WEAK';
+      } else if (distKm > 8.0 || rssi < -72 || clearanceRatio < 0.6) {
+        status = 'Marginal';
+        statusClass = 'text-amber-400 border-amber-500/40 bg-amber-950/40';
+        verdictBadge = 'MARGINAL CLEARANCE';
+      }
+
+      renderLinkGraphics(apLatLng, cpeLatLng, status, f1Radius);
+
+      // OFC Distance to nearest FAT
+      const fatNodes = state.nodes.filter(n => n.type === 'fat');
+      let nearestFAT = null;
+      let minFatDist = 999999;
+      fatNodes.forEach(f => {
+        const d = cpeLatLng.distanceTo(L.latLng(f.lat, f.lng));
+        if (d < minFatDist) {
+          minFatDist = d;
+          nearestFAT = f;
+        }
+      });
+
+      // Update UI Panels
+      document.getElementById('feasibility-pill').className = `px-2 py-0.5 rounded text-[11px] font-bold border ${statusClass}`;
+      document.getElementById('feasibility-pill').innerText = `${status.toUpperCase()} (${(rssi).toFixed(1)} dBm)`;
+      document.getElementById('drawer-title').innerText = `Link: ${ap.name} ⟷ ${cpe.name}`;
+      document.getElementById('link-distance-quick').classList.remove('hidden');
+      document.getElementById('link-distance-quick').innerText = `Dist: ${distKm.toFixed(2)} km`;
+
+      document.getElementById('rf-verdict-badge').innerText = verdictBadge;
+      document.getElementById('rf-verdict-badge').className = `px-2 py-0.5 rounded text-[10px] font-bold border ${statusClass}`;
+      document.getElementById('calc-distance').innerText = `${distKm.toFixed(2)} km (${distM.toFixed(0)}m)`;
+      document.getElementById('calc-fresnel-rad').innerText = `± ${f1Radius.toFixed(1)} m`;
+      document.getElementById('calc-fspl').innerText = `${fspl.toFixed(1)} dB`;
+      document.getElementById('calc-rssi').innerText = `${rssi.toFixed(1)} dBm`;
+
+      let recommendationText = `Clearance is ${(clearanceRatio * 100).toFixed(0)}% of F1. `;
+      if (clearanceRatio < 0.6) {
+        recommendationText += `Raise CPE mast to at least ${(cpeHeight + (0.6 - clearanceRatio) * f1Radius).toFixed(0)}m to clear foliage/building zone.`;
+      } else {
+        recommendationText += `Clear line of sight with full 60%+ 1st Fresnel zone clearance. Stable high-speed wireless link achievable.`;
+      }
+      document.getElementById('rf-recommendation').innerText = recommendationText;
+
+      // OFC Info
+      if (nearestFAT) {
+        const fatLoss = 10.5;
+        const dropFiberLoss = (minFatDist / 1000) * 0.35;
+        const totalOfcLoss = fatLoss + dropFiberLoss + 0.6;
+        const oltLaunchPwr = +5.0;
+        const estimatedRx = oltLaunchPwr - totalOfcLoss;
+
+        document.getElementById('ofc-nearest-fat').innerText = nearestFAT.name;
+        document.getElementById('ofc-cable-dist').innerText = `${minFatDist.toFixed(0)} m`;
+        document.getElementById('ofc-splitter-loss').innerText = `${fatLoss.toFixed(1)} dB`;
+        document.getElementById('ofc-rx-power').innerText = `${estimatedRx.toFixed(1)} dBm`;
+
+        const ofcBadge = document.getElementById('ofc-verdict-badge');
+        if (minFatDist <= 250) {
+          ofcBadge.innerText = 'FEASIBLE (2F Drop)';
+          ofcBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/40 text-emerald-400 border border-emerald-500/40';
+          document.getElementById('ofc-advice').innerText = `Direct 2-core FTTH drop feasible (<250m). Optical power is within optimal range.`;
+        } else if (minFatDist <= 400) {
+          ofcBadge.innerText = 'EXTENDED DROP';
+          ofcBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/40 text-amber-400 border border-amber-500/40';
+          document.getElementById('ofc-advice').innerText = `Drop is ${minFatDist.toFixed(0)}m. Use 2F/6F self-supporting aerial cable with messenger wire.`;
+        } else {
+          ofcBadge.innerText = 'FAT TOO FAR';
+          ofcBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950/40 text-rose-400 border border-rose-500/40';
+          document.getElementById('ofc-advice').innerText = `Distance ${minFatDist.toFixed(0)}m exceeds recommended drop range. Extend feeder fiber and add new FAT.`;
+        }
+      } else {
+        document.getElementById('ofc-nearest-fat').innerText = 'No FAT in DB';
+        document.getElementById('ofc-cable-dist').innerText = '--';
+        document.getElementById('ofc-splitter-loss').innerText = '--';
+        document.getElementById('ofc-rx-power').innerText = '--';
+        document.getElementById('ofc-verdict-badge').innerText = 'NO FAT';
+      }
+
+      renderFresnelElevationProfile(distKm, apHeight, cpeHeight, f1Radius, simulatedObstacleHeight);
+    }
+
+    // Render RF Line of Sight and Fresnel Polygon Envelope
+    function renderLinkGraphics(p1, p2, status, f1Radius) {
+      linkLayerGroup.clearLayers();
+      const color = status === 'Feasible' ? '#10b981' : (status === 'Marginal' ? '#f59e0b' : '#ef4444');
+
+      L.polyline([p1, p2], {
+        color: color,
+        weight: 3,
+        opacity: 0.9,
+        dashArray: status === 'Feasible' ? null : '6, 6'
+      }).addTo(linkLayerGroup);
+
+      const steps = 16;
+      const leftBoundary = [];
+      const rightBoundary = [];
+
+      const latDiff = p2.lat - p1.lat;
+      const lngDiff = p2.lng - p1.lng;
+      const normalLat = -lngDiff;
+      const normalLng = latDiff;
+      const length = Math.sqrt(normalLat * normalLat + normalLng * normalLng);
+
+      if (length > 0) {
+        const scaleFactor = (f1Radius / 111320); 
+
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const envelopeRad = Math.sin(t * Math.PI) * scaleFactor;
+          const midLat = p1.lat + t * latDiff;
+          const midLng = p1.lng + t * lngDiff;
+
+          const uLat = (normalLat / length) * envelopeRad;
+          const uLng = (normalLng / length) * envelopeRad;
+
+          leftBoundary.push([midLat + uLat, midLng + uLng]);
+          rightBoundary.unshift([midLat - uLat, midLng - uLng]);
+        }
+
+        const polygonCoords = leftBoundary.concat(rightBoundary);
+        L.polygon(polygonCoords, {
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.12,
+          weight: 1,
+          dashArray: '4, 4'
+        }).addTo(linkLayerGroup);
+      }
+    }
+
+    function clearLinkGraphics() {
+      linkLayerGroup.clearLayers();
+    }
+
+    function updateFeasibilityUIEmpty() {
+      document.getElementById('feasibility-pill').className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-slate-800 text-slate-400 border border-slate-700';
+      document.getElementById('feasibility-pill').innerText = 'No Active Link';
+      document.getElementById('drawer-title').innerText = 'Select or place a CPE to compute RF Fresnel & OFC Feasibility';
+      document.getElementById('link-distance-quick').classList.add('hidden');
+      document.getElementById('rf-verdict-badge').innerText = 'Awaiting Target';
+      document.getElementById('calc-distance').innerText = '-- km';
+      document.getElementById('calc-fresnel-rad').innerText = '-- m';
+      document.getElementById('calc-fspl').innerText = '-- dB';
+      document.getElementById('calc-rssi').innerText = '-- dBm';
+    }
+
+    // Chart.js Profile for 1st Fresnel Zone & Elevation
+    function renderFresnelElevationProfile(distKm, apHeight, cpeHeight, maxFresnelRadius, obsHeight) {
+      const ctx = document.getElementById('fresnel-chart').getContext('2d');
+      const sampleCount = 21;
+      const labels = [];
+      const losData = [];
+      const upperFresnel = [];
+      const lowerFresnel = [];
+      const terrainProfile = [];
+
+      for (let i = 0; i < sampleCount; i++) {
+        const t = i / (sampleCount - 1);
+        const distAtSample = (t * distKm).toFixed(2);
+        labels.push(`${distAtSample}km`);
+
+        const losEl = apHeight + (cpeHeight - apHeight) * t;
+        losData.push(losEl);
+
+        const fRad = Math.sin(t * Math.PI) * maxFresnelRadius;
+        upperFresnel.push(losEl + fRad);
+        lowerFresnel.push(losEl - fRad);
+
+        const simulatedTerrain = Math.sin(t * Math.PI) * obsHeight + (4 + Math.sin(t * 8) * 2);
+        terrainProfile.push(simulatedTerrain);
+      }
+
+      if (fresnelChart) {
+        fresnelChart.destroy();
+      }
+
+      fresnelChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Upper 1st Fresnel',
+              data: upperFresnel,
+              borderColor: 'rgba(6, 182, 212, 0.4)',
+              borderDash: [4, 4],
+              pointRadius: 0,
+              fill: false
+            },
+            {
+              label: 'Direct Line of Sight',
+              data: losData,
+              borderColor: '#10b981',
+              borderWidth: 2,
+              pointRadius: 1,
+              fill: false
+            },
+            {
+              label: 'Lower 1st Fresnel (60% Clearance target)',
+              data: lowerFresnel,
+              borderColor: 'rgba(6, 182, 212, 0.8)',
+              borderDash: [4, 4],
+              pointRadius: 0,
+              fill: false
+            },
+            {
+              label: 'Ground Elevation & Obstacles',
+              data: terrainProfile,
+              borderColor: '#64748b',
+              backgroundColor: 'rgba(51, 65, 85, 0.5)',
+              fill: true,
+              pointRadius: 0,
+              tension: 0.3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#0f172a',
+              borderColor: '#1e293b',
+              borderWidth: 1,
+              titleColor: '#38bdf8',
+              bodyFont: { size: 10 }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255,255,255,0.05)' },
+              ticks: { color: '#64748b', font: { size: 9 } }
+            },
+            y: {
+              grid: { color: 'rgba(255,255,255,0.05)' },
+              ticks: { color: '#64748b', font: { size: 9 } },
+              title: { display: true, text: 'Height (m)', color: '#475569', font: { size: 9 } }
+            }
+          }
+        }
+      });
+    }
+
+    // Live Geolocation / Mobile GPS Sync to DB
+    function toggleGPS() {
+      if (!navigator.geolocation) {
+        showToast("Geolocation is not supported by your mobile or browser.");
+        return;
+      }
+
+      if (state.gpsWatchId !== null) {
+        navigator.geolocation.clearWatch(state.gpsWatchId);
+        state.gpsWatchId = null;
+        if (state.gpsMarker) {
+          map.removeLayer(state.gpsMarker);
+          state.gpsMarker = null;
+        }
+        document.getElementById('gps-status-badge').classList.add('hidden');
+        showToast("Mobile GPS tracking deactivated");
+      } else {
+        showToast("📡 Connecting to Mobile GPS satellite positioning...");
+        state.gpsWatchId = navigator.geolocation.watchPosition(
+          pos => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            const accuracy = Math.round(pos.coords.accuracy);
+
+            const badge = document.getElementById('gps-status-badge');
+            badge.classList.remove('hidden');
+            document.getElementById('gps-status-text').innerText = `GPS Fixed: ±${accuracy}m Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
+
+            if (!state.gpsMarker) {
+              state.gpsMarker = L.circleMarker([lat, lng], {
+                radius: 8,
+                fillColor: '#10b981',
+                color: '#ffffff',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.8
+              }).addTo(map);
+              map.setView([lat, lng], 17);
+            } else {
+              state.gpsMarker.setLatLng([lat, lng]);
+            }
+          },
+          err => {
+            showToast(`GPS Error: ${err.message}`);
+          },
+          { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+        );
+      }
+    }
+
+    // Update Analytics Rollup
+    function updateAnalytics() {
+      const apCount = state.nodes.filter(n => n.type === 'ap').length;
+      const oltCount = state.nodes.filter(n => n.type === 'olt').length;
+      const fatCount = state.nodes.filter(n => n.type === 'fat').length;
+      const totalKm = state.cables.reduce((acc, c) => acc + c.lengthKm, 0);
+
+      document.getElementById('stat-fiber-km').innerText = `${totalKm.toFixed(2)} km`;
+      document.getElementById('stat-ap-count').innerText = apCount;
+      document.getElementById('stat-ofc-nodes').innerText = `${oltCount} / ${fatCount}`;
+      document.getElementById('stat-cpe-count').innerText = state.surveys.length;
+      document.getElementById('db-records-count').innerText = `${state.nodes.length} nodes, ${state.cables.length} cables`;
+    }
+
+    // Sample Demo Network Initializer
+    function loadSamplePlan() {
+      state.nodes.forEach(n => map.removeLayer(n.marker));
+      state.cables.forEach(c => map.removeLayer(c.polyline));
+      state.nodes = [];
+      state.cables = [];
+      clearLinkGraphics();
+
+      const center = map.getCenter();
+
+      // Permanent Nodes
+      addNode('noc', L.latLng(center.lat - 0.008, center.lng - 0.012), { name: 'Central NOC Datacenter' });
+      addNode('olt', L.latLng(center.lat - 0.005, center.lng - 0.006), { name: 'OLT-Main-GPON-01' });
+      const ap = addNode('ap', L.latLng(center.lat + 0.003, center.lng - 0.004), { name: 'Tower-Hill AP-1 (5.8G)', towerHeight: 35 });
+      addNode('fat', L.latLng(center.lat - 0.002, center.lng + 0.003), { name: 'FAT-Distribution-01' });
+      addNode('fat', L.latLng(center.lat + 0.001, center.lng + 0.006), { name: 'FAT-Distribution-02' });
+      addNode('joint', L.latLng(center.lat - 0.004, center.lng + 0.001), { name: 'Road Chamber Joint #4' });
+
+      // Backbone 24F
+      saveDraftCable([
+        [center.lat - 0.005, center.lng - 0.006],
+        [center.lat - 0.004, center.lng + 0.001],
+        [center.lat - 0.002, center.lng + 0.003]
+      ]);
+
+      // Sub-feeder 6F to second FAT
+      const p1 = [center.lat - 0.002, center.lng + 0.003];
+      const p2 = [center.lat + 0.001, center.lng + 0.006];
+      document.getElementById('cable-cores').value = "6";
+      saveDraftCable([p1, p2]);
+      document.getElementById('cable-cores').value = "24";
+
+      // Temporary Customer CPE for feasibility
+      const cpe = addNode('cpe', L.latLng(center.lat + 0.012, center.lng + 0.008), { name: 'Customer CPE - Horizon Villa' });
+
+      state.activeAP = ap;
+      state.activeCPE = cpe;
+      evaluateFeasibility();
+      map.fitBounds(L.featureGroup(state.nodes.map(n => n.marker)).getBounds().pad(0.2));
+      showToast("Loaded sample network with 24F & 6F lines and synced to DB");
+    }
+
+    // Render TIA-598 Color swatches preview bar in left panel
+    function renderQuickColorSwatches() {
+      const bar = document.getElementById('quick-color-swatches');
+      bar.innerHTML = TIA598_COLORS.map(c => `
+        <span title="Core ${c.num}: ${c.name}" class="w-3.5 h-3.5 rounded-full inline-block shrink-0 border border-white/20 cursor-pointer shadow hover:scale-125 transition" style="background-color: ${c.hex}"></span>
+      `).join('');
+    }
+
+    // Focus Mode (Maximize Map to 100%)
+    function toggleFocusMap() {
+      state.isFocusMode = !state.isFocusMode;
+      const sidebar = document.getElementById('main-sidebar');
+      const drawerBody = document.getElementById('drawer-body');
+      const drawer = document.getElementById('feasibility-drawer');
+      const focusLabel = document.getElementById('focus-label');
+      const focusIcon = document.getElementById('focus-icon');
+
+      if (state.isFocusMode) {
+        sidebar.classList.add('hidden');
+        drawer.classList.add('hidden');
+        focusLabel.innerText = 'Exit Focus';
+        focusIcon.setAttribute('data-lucide', 'minimize-2');
+        showToast("Map Maximized: 100% Screen View Active");
+      } else {
+        sidebar.classList.remove('hidden');
+        drawer.classList.remove('hidden');
+        focusLabel.innerText = 'Focus Map';
+        focusIcon.setAttribute('data-lucide', 'maximize-2');
+      }
+      lucide.createIcons();
+      setTimeout(() => map.invalidateSize(), 300);
+    }
+
+    // Toggle Left Sidebar
+    function toggleSidebar() {
+      const sidebar = document.getElementById('main-sidebar');
+      const icon = document.getElementById('sidebar-toggle-icon');
+      state.isSidebarOpen = !state.isSidebarOpen;
+
+      if (state.isSidebarOpen) {
+        sidebar.classList.remove('hidden');
+        icon.setAttribute('data-lucide', 'panel-left-close');
+      } else {
+        sidebar.classList.add('hidden');
+        icon.setAttribute('data-lucide', 'panel-left-open');
+      }
+      lucide.createIcons();
+      setTimeout(() => map.invalidateSize(), 300);
+    }
+
+    // Toggle Bottom Drawer
+    function toggleDrawer(forceCollapse = null) {
+      const drawerBody = document.getElementById('drawer-body');
+      const chevron = document.getElementById('drawer-chevron');
+      const quickLabel = document.getElementById('quick-drawer-label');
+      const arrowIcon = document.getElementById('drawer-arrow-icon');
+
+      const shouldCollapse = forceCollapse !== null ? forceCollapse : !state.isDrawerCollapsed;
+      state.isDrawerCollapsed = shouldCollapse;
+
+      if (state.isDrawerCollapsed) {
+        drawerBody.classList.add('hidden');
+        chevron.style.transform = 'rotate(180deg)';
+        quickLabel.innerText = 'Show Link Analytics';
+        arrowIcon.setAttribute('data-lucide', 'chevrons-up');
+      } else {
+        drawerBody.classList.remove('hidden');
+        chevron.style.transform = '';
+        quickLabel.innerText = 'Hide Link Analytics (Enlarge Map)';
+        arrowIcon.setAttribute('data-lucide', 'chevrons-down');
+      }
+      lucide.createIcons();
+      setTimeout(() => map.invalidateSize(), 300);
+    }
+
+    // Event Listeners Wiring
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      renderQuickColorSwatches();
+
+      // Check admin status in localStorage
+      state.isAdmin = localStorage.getItem(DB_AUTH_KEY) === 'true';
+      updateAuthUI();
+
+      // Edit Modal Actions
+      document.getElementById('btn-save-node-edit').addEventListener('click', saveNodeEdits);
+      document.getElementById('btn-cancel-node-edit').addEventListener('click', () => {
+        document.getElementById('node-edit-modal').classList.add('hidden');
+      });
+      document.getElementById('btn-close-edit-modal').addEventListener('click', () => {
+        document.getElementById('node-edit-modal').classList.add('hidden');
+      });
+
+      // Attempt to load existing persistent database
+      const dbLoaded = loadDatabase();
+      if (!dbLoaded || state.nodes.length === 0) {
+        loadSamplePlan();
+      }
+
+      // Maximize / Focus map button
+      document.getElementById('btn-toggle-focus').addEventListener('click', toggleFocusMap);
+
+      // Sidebar Toggle
+      document.getElementById('btn-toggle-sidebar').addEventListener('click', toggleSidebar);
+
+      // Quick Drawer Toggle
+      document.getElementById('btn-quick-collapse-bottom').addEventListener('click', () => toggleDrawer());
+      document.getElementById('drawer-toggle').addEventListener('click', () => toggleDrawer());
+      document.getElementById('btn-drawer-collapse').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDrawer();
+      });
+
+      // Admin Auth Dialog
+      document.getElementById('btn-admin-auth').addEventListener('click', () => {
+        document.getElementById('admin-modal').classList.remove('hidden');
+      });
+      document.getElementById('quick-login-toggle').addEventListener('click', () => {
+        if (state.isAdmin) {
+          state.isAdmin = false;
+          localStorage.setItem(DB_AUTH_KEY, 'false');
+          updateAuthUI();
+          showToast("Switched to Field Surveyor / Viewer mode");
+        } else {
+          document.getElementById('admin-modal').classList.remove('hidden');
+        }
+      });
+      document.getElementById('btn-close-modal').addEventListener('click', () => {
+        document.getElementById('admin-modal').classList.add('hidden');
+      });
+
+      // Login submission
+      document.getElementById('btn-submit-login').addEventListener('click', () => {
+        const user = document.getElementById('admin-user-input').value.trim();
+        const pass = document.getElementById('admin-pass-input').value.trim();
+        const errDiv = document.getElementById('admin-error-msg');
+
+        if (user === 'admin' && (pass === 'telecom2026' || pass === 'admin')) {
+          state.isAdmin = true;
+          localStorage.setItem(DB_AUTH_KEY, 'true');
+          updateAuthUI();
+          document.getElementById('admin-modal').classList.add('hidden');
+          errDiv.classList.add('hidden');
+          showToast("Admin authenticated: Permanent site editing & drag unlocked");
+        } else {
+          errDiv.innerText = "Invalid credentials. Try: admin / telecom2026";
+          errDiv.classList.remove('hidden');
+        }
+      });
+
+      // Logout
+      document.getElementById('btn-logout').addEventListener('click', () => {
+        state.isAdmin = false;
+        localStorage.setItem(DB_AUTH_KEY, 'false');
+        updateAuthUI();
+        document.getElementById('admin-modal').classList.add('hidden');
+        showToast("Logged out of Admin mode. Sites locked.");
+      });
+
+      // Tool selection buttons
+      document.querySelectorAll('.tool-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tool = btn.dataset.tool;
+          if (state.activeTool === tool) {
+            setTool(null);
+          } else {
+            setTool(tool, btn.querySelector('.text-xs').innerText);
+          }
+        });
+      });
+
+      // Cable Drawing Button
+      document.getElementById('btn-draw-cable').addEventListener('click', toggleCableDrawing);
+
+      // Map Click Handler for asset placement or fiber routing
+      map.on('click', (e) => {
+        if (state.isDrawingCable) {
+          state.cableDraftPoints.push([e.latlng.lat, e.latlng.lng]);
+          if (!state.cableDraftLine) {
+            state.cableDraftLine = L.polyline(state.cableDraftPoints, {
+              color: '#f43f5e',
+              dashArray: '5, 5',
+              weight: 3
+            }).addTo(map);
+          } else {
+            state.cableDraftLine.setLatLngs(state.cableDraftPoints);
+          }
+          return;
+        }
+
+        if (!state.activeTool) return;
+
+        if (state.activeTool === 'add-ap') {
+          addNode('ap', e.latlng);
+        } else if (state.activeTool === 'add-cpe') {
+          addNode('cpe', e.latlng);
+        } else if (state.activeTool === 'add-noc') {
+          addNode('noc', e.latlng);
+        } else if (state.activeTool === 'add-olt') {
+          addNode('olt', e.latlng);
+        } else if (state.activeTool === 'add-fat') {
+          addNode('fat', e.latlng);
+        } else if (state.activeTool === 'add-joint') {
+          addNode('joint', e.latlng);
+        }
+
+        setTool(null);
+      });
+
+      map.on('dblclick', (e) => {
+        if (state.isDrawingCable) {
+          L.DomEvent.stopPropagation(e);
+          finishCableDrawing();
+        }
+      });
+
+      // Pole Height Slider
+      const slider = document.getElementById('pole-height-slider');
+      slider.addEventListener('input', (e) => {
+        state.cpePoleHeight = parseInt(e.target.value);
+        document.getElementById('pole-height-val').innerText = `${state.cpePoleHeight} m`;
+        evaluateFeasibility();
+      });
+
+      // Layer switcher
+      document.querySelectorAll('.layer-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.layer-btn').forEach(b => {
+            b.classList.remove('bg-cyan-600', 'text-white');
+            b.classList.add('text-slate-400');
+          });
+          btn.classList.add('bg-cyan-600', 'text-white');
+          btn.classList.remove('text-slate-400');
+
+          const layerKey = btn.dataset.layer;
+          Object.values(mapLayers).forEach(l => map.removeLayer(l));
+          mapLayers[layerKey].addTo(map);
+        });
+      });
+
+      // Tab switcher
+      const tabRf = document.getElementById('tab-rf-btn');
+      const tabOfc = document.getElementById('tab-ofc-btn');
+      const rfTools = document.getElementById('rf-tools');
+      const ofcTools = document.getElementById('ofc-tools');
+
+      tabRf.addEventListener('click', () => {
+        tabRf.className = 'py-1.5 rounded-md font-medium text-cyan-400 bg-telecom-panel shadow';
+        tabOfc.className = 'py-1.5 rounded-md font-medium text-slate-400 hover:text-slate-200';
+        rfTools.classList.remove('hidden');
+        ofcTools.classList.add('hidden');
+      });
+
+      tabOfc.addEventListener('click', () => {
+        tabOfc.className = 'py-1.5 rounded-md font-medium text-pink-400 bg-telecom-panel shadow';
+        tabRf.className = 'py-1.5 rounded-md font-medium text-slate-400 hover:text-slate-200';
+        ofcTools.classList.remove('hidden');
+        rfTools.classList.add('hidden');
+      });
+
+      // GPS Button
+      document.getElementById('btn-sync-gps').addEventListener('click', () => {
+        toggleGPS();
+        // Open dashboard so user can directly commit GPS location
+        document.getElementById('survey-dashboard').classList.remove('translate-x-full');
+      });
+
+      // Dashboard Slide-over
+      const dashboard = document.getElementById('survey-dashboard');
+      document.getElementById('btn-toggle-dashboard').addEventListener('click', () => {
+        dashboard.classList.remove('translate-x-full');
+      });
+      document.getElementById('btn-close-dashboard').addEventListener('click', () => {
+        dashboard.classList.add('translate-x-full');
+      });
+
+      // Field Survey Form Direct Commit to DB
+      document.getElementById('btn-save-survey-log').addEventListener('click', () => {
+        const custName = document.getElementById('survey-cust-name').value.trim() || 'Field Geo-Tag';
+        const assetType = document.getElementById('survey-asset-type').value;
+        const surveyor = document.getElementById('survey-surveyor-name').value.trim() || 'Tech';
+        const bldgHeight = document.getElementById('survey-bldg-height').value;
+        const speed = document.getElementById('survey-req-speed').value;
+        const notes = document.getElementById('survey-notes').value.trim();
+
+        // Location priority: Live GPS marker -> Active CPE -> Map center
+        let latlng = map.getCenter();
+        if (state.gpsMarker) {
+          latlng = state.gpsMarker.getLatLng();
+        } else if (state.activeCPE) {
+          latlng = L.latLng(state.activeCPE.lat, state.activeCPE.lng);
+        }
+
+        // Add to permanent nodes list directly if requested
+        if (assetType !== 'cpe') {
+          if (!state.isAdmin) {
+            showToast("Note: Logged survey tag. Admin login required to promote to permanent network asset.");
+          } else {
+            addNode(assetType, latlng, { name: custName });
+          }
+        } else {
+          // Add survey CPE to map
+          addNode('cpe', latlng, { name: custName });
+        }
+
+        const surveyEntry = {
+          id: Date.now(),
+          name: custName,
+          type: assetType,
+          surveyor,
+          lat: latlng.lat,
+          lng: latlng.lng,
+          bldgHeight,
+          speed,
+          notes,
+          timestamp: new Date().toLocaleTimeString()
+        };
+
+        state.surveys.unshift(surveyEntry);
+        saveDatabase();
+        renderSurveyList();
+        updateAnalytics();
+        showToast(`Geo-Tagged & committed to database at (${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)})`);
+
+        document.getElementById('survey-cust-name').value = '';
+        document.getElementById('survey-notes').value = '';
+      });
+
+      function renderSurveyList() {
+        const container = document.getElementById('survey-list');
+        if (state.surveys.length === 0) {
+          container.innerHTML = '<div class="text-center py-6 text-slate-500 text-xs">No records in database.</div>';
+          return;
+        }
+
+        container.innerHTML = state.surveys.map((s, idx) => `
+          <div class="p-2.5 rounded-lg bg-telecom-panel border border-telecom-border text-xs space-y-1.5">
+            <div class="flex justify-between font-semibold text-slate-200">
+              <span class="text-cyan-300">${s.name}</span>
+              <span class="text-[10px] text-pink-400 font-mono uppercase bg-slate-900 px-1 rounded">${s.type}</span>
+            </div>
+            <div class="text-[10px] text-slate-400 flex justify-between font-mono">
+              <span>Lat: ${s.lat.toFixed(4)}, Lng: ${s.lng.toFixed(4)}</span>
+              <span class="text-emerald-400">DB Saved</span>
+            </div>
+            <div class="text-[10px] text-slate-400 flex justify-between">
+              <span>Surveyor: ${s.surveyor || 'Tech'}</span>
+              <span>${s.timestamp}</span>
+            </div>
+            ${s.notes ? `<div class="text-[11px] text-slate-300 italic">"${s.notes}"</div>` : ''}
+            
+            <div class="pt-1 border-t border-slate-800 flex justify-end gap-2">
+              <button onclick="editSurveyEntry(${s.id})" class="text-[10px] text-cyan-400 hover:underline flex items-center gap-1">
+                ✏️ Edit Tag
+              </button>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      window.editSurveyEntry = function(surveyId) {
+        const s = state.surveys.find(item => item.id === surveyId);
+        if (!s) return;
+        const newName = prompt("Enter new name for survey point:", s.name);
+        if (newName && newName.trim()) {
+          s.name = newName.trim();
+          saveDatabase();
+          renderSurveyList();
+          showToast("Survey record renamed in database");
+        }
+      };
+
+      // GeoJSON & Report Export
+      document.getElementById('btn-export-geojson').addEventListener('click', () => {
+        const geojson = {
+          type: "FeatureCollection",
+          features: [
+            ...state.nodes.map(n => ({
+              type: "Feature",
+              properties: { name: n.name, type: n.type, ...n.params },
+              geometry: { type: "Point", coordinates: [n.lng, n.lat] }
+            })),
+            ...state.cables.map(c => ({
+              type: "Feature",
+              properties: { name: c.name, cores: c.cores, lengthKm: c.lengthKm, lossDb: c.lossDb },
+              geometry: { type: "LineString", coordinates: c.coords.map(pt => [pt[1], pt[0]]) }
+            }))
+          ]
+        };
+
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(geojson, null, 2));
+        const dlAnchor = document.createElement('a');
+        dlAnchor.setAttribute("href", dataStr);
+        dlAnchor.setAttribute("download", `telecom_feasibility_database_${Date.now()}.geojson`);
+        document.body.appendChild(dlAnchor);
+        dlAnchor.click();
+        dlAnchor.remove();
+        showToast("Exported complete database to GeoJSON");
+      });
+
+      document.getElementById('btn-print-report').addEventListener('click', () => {
+        window.print();
+      });
+
+      document.getElementById('btn-load-sample').addEventListener('click', () => {
+        if (!state.isAdmin) {
+          showToast("🔒 Admin login required to overwrite database with demo template.");
+          document.getElementById('admin-modal').classList.remove('hidden');
+          return;
+        }
+        loadSamplePlan();
+      });
+
+      document.getElementById('btn-clear-all').addEventListener('click', () => {
+        if (!state.isAdmin) {
+          showToast("🔒 Admin login required to clear database.");
+          document.getElementById('admin-modal').classList.remove('hidden');
+          return;
+        }
+        state.nodes.forEach(n => map.removeLayer(n.marker));
+        state.cables.forEach(c => map.removeLayer(c.polyline));
+        state.nodes = [];
+        state.cables = [];
+        state.surveys = [];
+        state.activeAP = null;
+        state.activeCPE = null;
+        clearLinkGraphics();
+        localStorage.removeItem(DB_STORAGE_KEY);
+        updateAnalytics();
+        updateFeasibilityUIEmpty();
+        renderSurveyList();
+        showToast("Database completely cleared");
+      });
+    });
+  </script>
+</body>
+</html>
